@@ -1,0 +1,29 @@
+{
+  "name": "token-coach",
+  "version": "0.1.0",
+  "description": "Reads your local Claude Code and Codex session logs and tells you where the tokens actually went — repeated file reads, huge one-off tool outputs, bloated rules files. Not another cost dashboard.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "token-coach": "./bin/token-coach.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
