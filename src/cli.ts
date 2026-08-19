@@ -2,40 +2,64 @@ import { loadClaudeCodeSessions } from "./adapters/claudeCode.js";
 import { loadCodexSessions } from "./adapters/codex.js";
 import { analyzeSessions } from "./analyze/index.js";
 import { printTerminalReport } from "./report/terminalReport.js";
+import { cleanOldSessions, defaultArchiveDir } from "./clean.js";
+import { toJsonReport } from "./report/jsonReport.js";
 import type { Session, ToolKind } from "./types.js";
 
-interface Args {
-  command: string;
+interface AnalyzeArgs {
   tool: ToolKind | "all";
   limit: number;
   sinceDays: number | undefined;
+  json: boolean;
 }
 
-function parseArgs(argv: string[]): Args {
-  const command = argv[0] ?? "analyze";
+interface CleanArgs {
+  tool: ToolKind | "all";
+  olderThanDays: number;
+  dryRun: boolean;
+  json: boolean;
+}
+
+function parseAnalyzeArgs(argv: string[]): AnalyzeArgs {
   let tool: ToolKind | "all" = "all";
   let limit = 20;
   let sinceDays: number | undefined;
+  let json = false;
 
-  for (let i = 1; i < argv.length; i++) {
+  for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--tool") {
-      const value = argv[++i];
-      if (value === "claude" || value === "claude-code") tool = "claude-code";
-      else if (value === "codex") tool = "codex";
-      else if (value === "all") tool = "all";
-      else {
-        console.error(`Unknown --tool value: ${value} (expected claude|codex|all)`);
-        process.exit(1);
-      }
-    } else if (arg === "--limit") {
-      limit = Number(argv[++i]) || limit;
-    } else if (arg === "--since-days") {
-      sinceDays = Number(argv[++i]);
-    }
+    if (arg === "--tool") tool = parseTool(argv[++i]);
+    else if (arg === "--limit") limit = Number(argv[++i]) || limit;
+    else if (arg === "--since-days") sinceDays = Number(argv[++i]);
+    else if (arg === "--json") json = true;
   }
 
-  return { command, tool, limit, sinceDays };
+  return { tool, limit, sinceDays, json };
+}
+
+function parseCleanArgs(argv: string[]): CleanArgs {
+  let tool: ToolKind | "all" = "all";
+  let olderThanDays = 30;
+  let dryRun = false;
+  let json = false;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--tool") tool = parseTool(argv[++i]);
+    else if (arg === "--older-than-days") olderThanDays = Number(argv[++i]) || olderThanDays;
+    else if (arg === "--dry-run") dryRun = true;
+    else if (arg === "--json") json = true;
+  }
+
+  return { tool, olderThanDays, dryRun, json };
+}
+
+function parseTool(value: string | undefined): ToolKind | "all" {
+  if (value === "claude" || value === "claude-code") return "claude-code";
+  if (value === "codex") return "codex";
+  if (value === "all" || value === undefined) return "all";
+  console.error(`Unknown --tool value: ${value} (expected claude|codex|all)`);
+  process.exit(1);
 }
 
 function withinWindow(session: Session, sinceDays: number | undefined): boolean {
@@ -58,15 +82,49 @@ function printHelp(): void {
   console.log(`token-coach — finds where your Claude Code / Codex tokens actually went
 
 Usage:
-  token-coach analyze [--tool claude|codex|all] [--limit N] [--since-days N]
+  token-coach analyze [--tool claude|codex|all] [--limit N] [--since-days N] [--json]
+  token-coach clean [--tool claude|codex|all] [--older-than-days 30] [--dry-run] [--json]
   token-coach --help
 
 Reads session logs from:
   ~/.claude/projects/**/*.jsonl
   ~/.codex/sessions/**/rollout-*.jsonl
 
+"clean" MOVES old session logs to ${defaultArchiveDir()} — nothing is deleted.
+
 Nothing leaves your machine. No network calls.
 `);
+}
+
+function runAnalyze(argv: string[]): void {
+  const args = parseAnalyzeArgs(argv);
+  const sessions = loadSessions(args.tool).filter((s) => withinWindow(s, args.sinceDays));
+  const findings = analyzeSessions(sessions);
+
+  if (args.json) {
+    console.log(JSON.stringify(toJsonReport(sessions, findings)));
+    return;
+  }
+  printTerminalReport(sessions, findings, args.limit);
+}
+
+function runClean(argv: string[]): void {
+  const args = parseCleanArgs(argv);
+  const result = cleanOldSessions({ tool: args.tool, olderThanDays: args.olderThanDays, dryRun: args.dryRun });
+
+  if (args.json) {
+    console.log(JSON.stringify(result));
+    return;
+  }
+
+  if (result.files.length === 0) {
+    console.log(`Nothing older than ${args.olderThanDays} days found. Nothing to do.`);
+    return;
+  }
+  const verb = args.dryRun ? "Would archive" : "Archived";
+  const mb = (result.totalBytes / (1024 * 1024)).toFixed(1);
+  console.log(`${verb} ${result.files.length} session file(s), ${mb} MB, to ${result.archiveDir}`);
+  if (args.dryRun) console.log("(dry run — nothing was moved. Re-run without --dry-run to apply.)");
 }
 
 function main(): void {
@@ -76,15 +134,12 @@ function main(): void {
     return;
   }
 
-  const args = parseArgs(argv);
-  if (args.command !== "analyze") {
-    printHelp();
-    process.exit(1);
-  }
+  const [command, ...rest] = argv;
+  if (command === "analyze") return runAnalyze(rest);
+  if (command === "clean") return runClean(rest);
 
-  const sessions = loadSessions(args.tool).filter((s) => withinWindow(s, args.sinceDays));
-  const findings = analyzeSessions(sessions);
-  printTerminalReport(sessions, findings, args.limit);
+  printHelp();
+  process.exit(1);
 }
 
 main();
