@@ -25,11 +25,12 @@ function compaction(overrides: Partial<CompactionEvent> = {}): CompactionEvent {
 }
 
 describe("findLateCompactions", () => {
-  it("flags a confirmed-auto compaction above the threshold as warn", () => {
+  it("flags a confirmed-auto compaction above the threshold as warn, with a recommendation", () => {
     const findings = findLateCompactions(session([compaction({ trigger: "auto", preTokens: 200_000 })]));
     expect(findings).toHaveLength(1);
     expect(findings[0]!.severity).toBe("warn");
     expect(findings[0]!.title).toContain("200,000");
+    expect(findings[0]!.recommendation).toBeTruthy();
   });
 
   it("does not flag a small compaction, even auto-triggered", () => {
@@ -37,10 +38,11 @@ describe("findLateCompactions", () => {
     expect(findings).toHaveLength(0);
   });
 
-  it("reports an unlabeled (Codex-style) large compaction only as info, never guessed as warn", () => {
+  it("reports an unlabeled (Codex-style) large compaction only as info, never guessed as warn, and with no recommendation", () => {
     const findings = findLateCompactions(session([compaction({ trigger: "unknown", preTokens: 300_000 })]));
     expect(findings).toHaveLength(1);
     expect(findings[0]!.severity).toBe("info");
+    expect(findings[0]!.recommendation).toBeUndefined();
   });
 
   it("never flags a compaction with no known preTokens — no data means no claim", () => {

@@ -48,6 +48,7 @@ export function findRepeatedTargets(session: Session): Finding[] {
           run.chars.length - 1
         } returned content already in context.`,
         estimatedTokens: wastedChars > 0 ? charsToTokens(wastedChars) : undefined,
+        recommendation: undefined,
         sessionId: session.id,
         tool: session.tool,
       });

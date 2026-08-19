@@ -56,8 +56,9 @@ export function findStaleContext(session: Session): Finding[] {
       category: "stale-context",
       severity: "warn",
       title: `${call.name} loaded ${charsToTokens(call.outputChars).toLocaleString("en-US")} tokens, unused for ${turnsSince} turns`,
-      detail: `"${call.target}" — loaded ${turnsSince} turns ago and never referenced since. It's still fully resent as context on every turn since then. Clearing or forking now drops it.`,
+      detail: `"${call.target}" — loaded ${turnsSince} turns ago and never referenced since. It's still fully resent as context on every turn since then.`,
       estimatedTokens: charsToTokens(call.outputChars),
+      recommendation: "Clear or fork this conversation now — that's exactly what drops it from context.",
       sessionId: session.id,
       tool: session.tool,
     });

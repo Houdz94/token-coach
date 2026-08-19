@@ -28,6 +28,7 @@ export function findLargeOutputs(session: Session, alreadyFlaggedTargets: Set<st
         ? `"${call.target}" — one call, ~${charsToTokens(call.outputChars).toLocaleString()} tokens. Worth checking whether the agent needed all of it.`
         : `One call, ~${charsToTokens(call.outputChars).toLocaleString()} tokens, no extractable target (likely a shell command or search). Worth a look if this repeats.`,
       estimatedTokens: charsToTokens(call.outputChars),
+      recommendation: undefined,
       sessionId: session.id,
       tool: session.tool,
     });

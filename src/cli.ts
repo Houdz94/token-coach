@@ -5,6 +5,7 @@ import { printTerminalReport } from "./report/terminalReport.js";
 import { cleanOldSessions, archiveSessionsByIds, defaultArchiveDir } from "./clean.js";
 import { toJsonReport } from "./report/jsonReport.js";
 import { findActiveSessions } from "./live.js";
+import { dismissFile } from "./dismiss.js";
 import type { Session, ToolKind } from "./types.js";
 
 interface AnalyzeArgs {
@@ -94,6 +95,7 @@ Usage:
   token-coach clean [--tool claude|codex|all] [--older-than-days 30] [--dry-run] [--json]
   token-coach clean --session-ids id1,id2,... [--dry-run] [--json]
   token-coach live [--minutes 20] [--json]
+  token-coach dismiss --path <file> [--json]
   token-coach --help
 
 Reads session logs from:
@@ -103,6 +105,10 @@ Reads session logs from:
 "clean" MOVES session logs to ${defaultArchiveDir()} — nothing is deleted.
 Without --session-ids it sweeps by age; with it, it archives exactly the
 sessions named (e.g. the sessionId of a specific finding from --json).
+
+"dismiss" marks a bloated-rules-file finding fixed as of the file's
+CURRENT content — it stays quiet only until that file changes again, not
+forever.
 
 Nothing leaves your machine. No network calls.
 `);
@@ -168,8 +174,30 @@ function runLive(argv: string[]): void {
     for (const f of s.findings) {
       console.log(`  ${f.severity === "warn" ? "⚠" : "·"} ${f.title}`);
       console.log(`    ${f.detail}`);
+      if (f.recommendation) console.log(`    → ${f.recommendation}`);
     }
   }
+}
+
+function runDismiss(argv: string[]): void {
+  let path: string | undefined;
+  let json = false;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--path") path = argv[++i];
+    else if (argv[i] === "--json") json = true;
+  }
+
+  if (!path) {
+    console.error("dismiss requires --path <file>");
+    process.exit(1);
+  }
+
+  const result = dismissFile(path);
+  if (json) {
+    console.log(JSON.stringify(result));
+    return;
+  }
+  console.log(`Dismissed ${result.path} — it stays quiet until this file's content changes again.`);
 }
 
 function main(): void {
@@ -183,6 +211,7 @@ function main(): void {
   if (command === "analyze") return runAnalyze(rest);
   if (command === "clean") return runClean(rest);
   if (command === "live") return runLive(rest);
+  if (command === "dismiss") return runDismiss(rest);
 
   printHelp();
   process.exit(1);

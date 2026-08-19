@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Finding, ToolKind } from "../types.js";
 import { charsToTokens } from "./estimate.js";
+import { isDismissed, defaultDismissedStorePath } from "../dismiss.js";
 
 const RULES_FILENAMES = ["CLAUDE.md", "AGENTS.md"];
 const LONG_FILE_LINES = 250;
@@ -15,7 +16,7 @@ const DUPLICATE_LINE_RATIO = 0.15;
  * instruction restated under two headings is common and easy to catch this
  * way without any real prose analysis).
  */
-export function findBloatedRulesFile(cwd: string, tool: ToolKind): Finding | undefined {
+export function findBloatedRulesFile(cwd: string, tool: ToolKind, dismissedStorePath: string = defaultDismissedStorePath()): Finding | undefined {
   for (const filename of RULES_FILENAMES) {
     const path = join(cwd, filename);
     if (!existsSync(path)) continue;
@@ -26,6 +27,12 @@ export function findBloatedRulesFile(cwd: string, tool: ToolKind): Finding | und
     } catch {
       continue;
     }
+
+    // Dismissed = "I already fixed this" recorded against this exact
+    // content — not a blind mute. If the file changes again later (even
+    // back to today's exact bloat), the stored hash no longer matches and
+    // this resumes flagging on its own.
+    if (isDismissed(path, text, dismissedStorePath)) continue;
 
     const lines = text.split("\n").filter((l) => l.trim().length > 0);
     const nonTrivial = lines.filter((l) => l.trim().length > 20);
@@ -47,6 +54,7 @@ export function findBloatedRulesFile(cwd: string, tool: ToolKind): Finding | und
       title: `${filename} is loaded into every session here and looks bloated`,
       detail: `${path} — ${reasons.join(", ")}. Every session in this project pays this cost on top of whatever it actually needed.`,
       estimatedTokens: charsToTokens(text.length),
+      recommendation: "Open it, cut the duplicate/bloated parts, then mark it fixed — it stops flagging once the file actually changes.",
       sessionId: cwd,
       tool,
     };

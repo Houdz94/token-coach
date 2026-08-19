@@ -42,6 +42,11 @@ export function findLateCompactions(session: Session): Finding[] {
         ? `This session let context grow to ~${pre} tokens before the CLI forced a compaction${durationNote}. Compacting (or clearing) earlier keeps turns faster and drops less of the middle of the conversation.`
         : `A compaction happened with roughly ${pre} tokens of context beforehand${durationNote}. This tool's logs don't label whether that was automatic or requested, so treat this as informational.`,
       estimatedTokens: undefined,
+      // Retrospective by nature (the compaction already happened) — there's
+      // nothing left to act on for *this* instance, only a habit to change
+      // next time. Only worth stating when we're actually sure it was
+      // avoidable (confirmed "auto"), not on Codex's unlabeled "info" case.
+      recommendation: isConfirmedAuto ? "Next time this session gets this large, clear or compact proactively instead of waiting for it to trigger automatically." : undefined,
       sessionId: session.id,
       tool: session.tool,
     });

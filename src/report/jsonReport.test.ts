@@ -9,6 +9,7 @@ function finding(overrides: Partial<Finding> = {}): Finding {
     title: "t",
     detail: "d",
     estimatedTokens: 100,
+    recommendation: undefined,
     sessionId: "s1",
     tool: "claude-code",
     ...overrides,

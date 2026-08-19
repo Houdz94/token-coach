@@ -35,6 +35,7 @@ describe("findStaleContext", () => {
     const findings = findStaleContext(session(calls));
     expect(findings).toHaveLength(1);
     expect(findings[0]!.detail).toContain("big.json");
+    expect(findings[0]!.recommendation).toMatch(/clear|fork/i);
   });
 
   it("does not flag a target referenced again later, however large", () => {

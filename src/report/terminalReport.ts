@@ -57,6 +57,7 @@ export function printTerminalReport(sessions: Session[], findings: Finding[], li
     const est = f.estimatedTokens !== undefined ? ` ${DIM}(~${fmt(f.estimatedTokens)} tok)${RESET}` : "";
     console.log(`${marker} ${f.title}${est}`);
     console.log(`  ${DIM}${f.detail}${RESET}`);
+    if (f.recommendation) console.log(`  ${YELLOW}→ ${f.recommendation}${RESET}`);
   }
 
   const totalEstimated = findings.reduce((sum, f) => sum + (f.estimatedTokens ?? 0), 0);

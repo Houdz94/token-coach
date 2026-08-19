@@ -77,6 +77,16 @@ export interface Finding {
   detail: string;
   /** Rough token estimate this finding accounts for, when computable. */
   estimatedTokens: number | undefined;
+  /**
+   * The concrete "do this" line, kept separate from `detail` (the "why").
+   * Only set on findings that have a real, immediate action to recommend
+   * — a live stale-context finding ("clear or fork now"), for instance.
+   * Historical-only categories (repeated-target, large-output on an
+   * already-finished session) have nothing left to actually do, so this
+   * stays undefined for them rather than recommending an action that no
+   * longer applies.
+   */
+  recommendation: string | undefined;
   sessionId: string;
   tool: ToolKind;
 }
