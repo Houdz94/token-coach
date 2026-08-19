@@ -1,4 +1,5 @@
 import type { Session, Finding } from "../types.js";
+import { computeForkBreakdown, type ForkBreakdown } from "../analyze/forkBreakdown.js";
 
 export type Severity = "green" | "orange" | "red";
 
@@ -14,8 +15,13 @@ export function computeSeverity(findings: Finding[]): Severity {
 
   const totalEstimated = findings.reduce((sum, f) => sum + (f.estimatedTokens ?? 0), 0);
   const hasBigWarn = findings.some((f) => f.severity === "warn" && (f.estimatedTokens ?? 0) >= RED_SINGLE_FINDING_TOKENS);
+  // late-compaction findings carry no token estimate (see lateCompaction.ts)
+  // so they'd never trip hasBigWarn/totalEstimated on their own — but a
+  // confirmed-auto late compaction is unambiguously a real problem, not a
+  // maybe, so it escalates straight to red regardless of token math.
+  const hasLateCompactionWarn = findings.some((f) => f.category === "late-compaction" && f.severity === "warn");
 
-  if (hasBigWarn || totalEstimated >= RED_TOTAL_TOKENS) return "red";
+  if (hasBigWarn || hasLateCompactionWarn || totalEstimated >= RED_TOTAL_TOKENS) return "red";
   return "orange";
 }
 
@@ -25,6 +31,7 @@ export interface JsonReport {
   sessionCount: number;
   totalEstimatedTokens: number;
   findings: Finding[];
+  forkBreakdown: ForkBreakdown[];
 }
 
 export function toJsonReport(sessions: Session[], findings: Finding[]): JsonReport {
@@ -34,5 +41,6 @@ export function toJsonReport(sessions: Session[], findings: Finding[]): JsonRepo
     sessionCount: sessions.length,
     totalEstimatedTokens: findings.reduce((sum, f) => sum + (f.estimatedTokens ?? 0), 0),
     findings,
+    forkBreakdown: computeForkBreakdown(sessions),
   };
 }

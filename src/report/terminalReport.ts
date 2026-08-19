@@ -1,4 +1,6 @@
 import type { Session, Finding } from "../types.js";
+import { sessionTokenTotal } from "../analyze/estimate.js";
+import { computeForkBreakdown } from "../analyze/forkBreakdown.js";
 
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
@@ -8,15 +10,6 @@ const CYAN = "\x1b[36m";
 
 function fmt(n: number): string {
   return n.toLocaleString("en-US");
-}
-
-function sessionCumulativeTotal(session: Session): number | undefined {
-  let max: number | undefined;
-  for (const sample of session.tokenSamples) {
-    if (sample.cumulativeTotal === undefined) continue;
-    if (max === undefined || sample.cumulativeTotal > max) max = sample.cumulativeTotal;
-  }
-  return max;
 }
 
 export function printTerminalReport(sessions: Session[], findings: Finding[], limit: number): void {
@@ -30,7 +23,7 @@ export function printTerminalReport(sessions: Session[], findings: Finding[], li
   console.log(`\n${BOLD}token-coach${RESET} — ${fmt(sessions.length)} session${sessions.length === 1 ? "" : "s"} analyzed\n`);
 
   for (const [tool, toolSessions] of byTool) {
-    const known = toolSessions.map(sessionCumulativeTotal).filter((n): n is number => n !== undefined);
+    const known = toolSessions.map(sessionTokenTotal).filter((n): n is number => n !== undefined);
     const totalStr =
       known.length > 0
         ? `~${fmt(known.reduce((a, b) => a + b, 0))} fresh tokens (excludes cached/reused context — not a dollar figure)`
@@ -39,6 +32,16 @@ export function printTerminalReport(sessions: Session[], findings: Finding[], li
   }
   if (byTool.size > 1) {
     console.log(`  ${DIM}(different tools compute this differently — treat each line as internally consistent, not a precise comparison)${RESET}`);
+  }
+
+  const forkBreakdown = computeForkBreakdown(sessions);
+  for (const b of forkBreakdown) {
+    if (b.forkCount === 0) continue;
+    const total = b.mainThreadTokens + b.forkTokens;
+    const forkPct = total > 0 ? Math.round((b.forkTokens / total) * 100) : 0;
+    console.log(
+      `  ${DIM}${b.tool}: ${fmt(b.forkCount)} fork(s) across ${b.mainSessionCount} main session(s) — ${forkPct}% of tokens spent in forks (not necessarily bad — see README)${RESET}`,
+    );
   }
 
   if (findings.length === 0) {

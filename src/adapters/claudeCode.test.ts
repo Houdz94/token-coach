@@ -70,4 +70,39 @@ describe("parseClaudeCodeSession", () => {
   it("returns an empty session for an unreadable/missing file rather than throwing", () => {
     expect(() => parseClaudeCodeSession("/nonexistent/path.jsonl")).toThrow();
   });
+
+  it("parses a compact_boundary system record into a CompactionEvent", () => {
+    dir = mkdtempSync(join(tmpdir(), "token-coach-test-"));
+    const file = join(dir, "sess-1.jsonl");
+    const compactLine = JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      timestamp: "2026-01-01T00:05:00Z",
+      content: "Conversation compacted",
+      compactMetadata: { trigger: "auto", preTokens: 934288, postTokens: 12503, durationMs: 212798 },
+    });
+    writeFileSync(file, [...LINES, compactLine].join("\n"));
+
+    const session = parseClaudeCodeSession(file);
+    expect(session.compactions).toEqual([
+      { timestamp: "2026-01-01T00:05:00Z", trigger: "auto", preTokens: 934288, postTokens: 12503, durationMs: 212798 },
+    ]);
+  });
+
+  it("marks a session as a fork when any record has isSidechain: true", () => {
+    dir = mkdtempSync(join(tmpdir(), "token-coach-test-"));
+    const file = join(dir, "sess-1.jsonl");
+    const sidechainLine = JSON.stringify({ type: "user", isSidechain: true, timestamp: "2026-01-01T00:00:02Z", agentId: "abc" });
+    writeFileSync(file, [...LINES, sidechainLine].join("\n"));
+
+    expect(parseClaudeCodeSession(file).isFork).toBe(true);
+  });
+
+  it("defaults isFork to false for a normal main-thread session", () => {
+    dir = mkdtempSync(join(tmpdir(), "token-coach-test-"));
+    const file = join(dir, "sess-1.jsonl");
+    writeFileSync(file, LINES.join("\n"));
+
+    expect(parseClaudeCodeSession(file).isFork).toBe(false);
+  });
 });

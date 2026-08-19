@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import type { Session, ToolCallEvent, TokenSample } from "../types.js";
+import type { Session, ToolCallEvent, TokenSample, CompactionEvent } from "../types.js";
+import { findWslRoots } from "./wslRoots.js";
 
 export function defaultCodexRoot(): string {
   return join(homedir(), ".codex", "sessions");
@@ -100,9 +101,15 @@ export function parseCodexSession(filePath: string): Session {
   let startedAt: string | undefined;
   let endedAt: string | undefined;
   let turnCount = 0;
+  let isFork = false;
 
   const toolCalls: ToolCallEvent[] = [];
   const tokenSamples: TokenSample[] = [];
+  // Codex's own `compacted`/`context_compacted` records carry no
+  // trigger/preTokens/postTokens (unlike Claude Code's compact_boundary) —
+  // just the timestamp here, backfilled from the surrounding token_count
+  // samples in a pass after the main loop, once every sample is collected.
+  const compactionTimestamps: string[] = [];
   const pending = new Map<string, PendingCall>();
   let currentTurnId = "turn-0";
   let turnSeq = 0;
@@ -127,12 +134,19 @@ export function parseCodexSession(filePath: string): Session {
     if (record.type === "session_meta") {
       if (typeof payload.session_id === "string") id = payload.session_id;
       if (typeof payload.cwd === "string") cwd = payload.cwd;
+      // A subagent/forked session is its own entire rollout file here
+      // (unlike Claude Code's nested subagents/ folder) — session_meta's
+      // `source` carries a `subagent` key when it is one.
+      const source = payload.source;
+      if (source && typeof source === "object" && "subagent" in source) isFork = true;
       continue;
     }
 
     if (record.type === "event_msg") {
       const kind = payload.type;
-      if (kind === "task_started") {
+      if (kind === "context_compacted") {
+        compactionTimestamps.push(timestamp);
+      } else if (kind === "task_started") {
         turnSeq += 1;
         currentTurnId = typeof payload.turn_id === "string" ? payload.turn_id : `turn-${turnSeq}`;
         turnCount += 1;
@@ -185,6 +199,25 @@ export function parseCodexSession(filePath: string): Session {
     }
   }
 
+  // Date.parse, not a raw string compare: real Codex timestamps are
+  // consistently millisecond-precision ("...06.258Z"), but nothing
+  // guarantees that everywhere, and a millisecond-less timestamp sorts
+  // *after* a millisecond one as a plain string ("...06Z" > "...06.5Z"
+  // lexicographically, despite being the same instant) — happy to compare
+  // by string right up until two records disagree on precision.
+  const compactions: CompactionEvent[] = compactionTimestamps.map((ts) => {
+    const tsMs = Date.parse(ts);
+    let preTokens: number | undefined;
+    let postTokens: number | undefined;
+    for (const sample of tokenSamples) {
+      const sampleMs = Date.parse(sample.timestamp);
+      if (Number.isNaN(sampleMs)) continue;
+      if (sampleMs <= tsMs) preTokens = sample.cumulativeTotal;
+      else if (postTokens === undefined) postTokens = sample.cumulativeTotal;
+    }
+    return { timestamp: ts, trigger: "unknown", preTokens, postTokens, durationMs: undefined };
+  });
+
   return {
     id,
     tool: "codex",
@@ -194,12 +227,22 @@ export function parseCodexSession(filePath: string): Session {
     endedAt,
     toolCalls,
     tokenSamples,
+    compactions,
     turnCount,
+    isFork,
   };
 }
 
-export function loadCodexSessions(root: string = defaultCodexRoot()): Session[] {
-  return findCodexSessionFiles(root)
+export function loadCodexSessions(
+  root: string = defaultCodexRoot(),
+  additionalRoots: string[] = findWslRoots([".codex", "sessions"]),
+): Session[] {
+  // Not deduped by session id — see claudeCode.ts's loader for why
+  // (fork/subagent sessions can share an id with something else while
+  // being genuinely separate). Path-level duplication across WSL UNC
+  // prefixes is avoided upstream in findWslRoots instead.
+  return [root, ...additionalRoots]
+    .flatMap((r) => findCodexSessionFiles(r))
     .map((f) => {
       try {
         return parseCodexSession(f);

@@ -1,8 +1,8 @@
 import { renameSync, mkdirSync, statSync, rmSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { homedir } from "node:os";
-import { findClaudeCodeSessionFiles, defaultClaudeCodeRoot } from "./adapters/claudeCode.js";
-import { findCodexSessionFiles, defaultCodexRoot } from "./adapters/codex.js";
+import { findClaudeCodeSessionFiles, defaultClaudeCodeRoot, loadClaudeCodeSessions } from "./adapters/claudeCode.js";
+import { findCodexSessionFiles, defaultCodexRoot, loadCodexSessions } from "./adapters/codex.js";
 import type { ToolKind } from "./types.js";
 
 export function defaultArchiveDir(): string {
@@ -20,6 +20,25 @@ export interface CleanResult {
   files: ArchivedFile[];
   totalBytes: number;
   archiveDir: string;
+}
+
+function moveFile(tool: ToolKind, root: string, path: string, archiveDir: string, dryRun: boolean | undefined): ArchivedFile | undefined {
+  let stat;
+  try {
+    stat = statSync(path);
+  } catch {
+    return undefined;
+  }
+
+  const rel = relative(root, path);
+  const dest = join(archiveDir, tool, rel);
+
+  if (!dryRun) {
+    mkdirSync(dirname(dest), { recursive: true });
+    renameSync(path, dest);
+  }
+
+  return { tool, from: path, to: dest, bytes: stat.size };
 }
 
 /**
@@ -51,15 +70,8 @@ export function cleanOldSessions(options: {
         continue;
       }
       if (stat.mtimeMs >= cutoff) continue;
-
-      const rel = relative(root, path);
-      const dest = join(archiveDir, tool, rel);
-      files.push({ tool, from: path, to: dest, bytes: stat.size });
-
-      if (!options.dryRun) {
-        mkdirSync(dirname(dest), { recursive: true });
-        renameSync(path, dest);
-      }
+      const moved = moveFile(tool, root, path, archiveDir, options.dryRun);
+      if (moved) files.push(moved);
     }
   }
 
@@ -70,6 +82,41 @@ export function cleanOldSessions(options: {
   if (options.tool === "all" || options.tool === "codex") {
     const root = options.codexRoot ?? defaultCodexRoot();
     collect("codex", root, findCodexSessionFiles(root));
+  }
+
+  return { files, totalBytes: files.reduce((sum, f) => sum + f.bytes, 0), archiveDir };
+}
+
+/**
+ * Moves exactly the session files named by `sessionIds` into `archiveDir` —
+ * the targeted counterpart to `cleanOldSessions`'s age-based sweep. This is
+ * what the desktop app's "archive the sessions flagged above" button calls:
+ * the ids come straight from a Finding's `sessionId`, so what gets moved is
+ * exactly what was shown as a problem, not an unrelated date cutoff.
+ */
+export function archiveSessionsByIds(options: {
+  sessionIds: string[];
+  archiveDir?: string;
+  dryRun?: boolean;
+  claudeRoot?: string;
+  codexRoot?: string;
+}): CleanResult {
+  const archiveDir = options.archiveDir ?? defaultArchiveDir();
+  const wanted = new Set(options.sessionIds);
+  const files: ArchivedFile[] = [];
+
+  const claudeRoot = options.claudeRoot ?? defaultClaudeCodeRoot();
+  for (const session of loadClaudeCodeSessions(claudeRoot)) {
+    if (!wanted.has(session.id)) continue;
+    const moved = moveFile("claude-code", claudeRoot, session.sourcePath, archiveDir, options.dryRun);
+    if (moved) files.push(moved);
+  }
+
+  const codexRoot = options.codexRoot ?? defaultCodexRoot();
+  for (const session of loadCodexSessions(codexRoot)) {
+    if (!wanted.has(session.id)) continue;
+    const moved = moveFile("codex", codexRoot, session.sourcePath, archiveDir, options.dryRun);
+    if (moved) files.push(moved);
   }
 
   return { files, totalBytes: files.reduce((sum, f) => sum + f.bytes, 0), archiveDir };

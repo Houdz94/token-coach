@@ -28,6 +28,21 @@ export interface TokenSample {
   cumulativeTotal: number | undefined;
 }
 
+export interface CompactionEvent {
+  timestamp: string;
+  /**
+   * "auto" = the CLI forced this because context filled up (the timing
+   * signal worth flagging — it means nothing cleared proactively).
+   * "unknown" for tools whose logs don't label this (Codex's `compacted`
+   * record carries no trigger field — never guessed, always honest).
+   */
+  trigger: "auto" | "manual" | "unknown";
+  /** Context size right before compaction, when the log reports it directly (Claude Code) or it's derived from the nearest prior token sample (Codex). */
+  preTokens: number | undefined;
+  postTokens: number | undefined;
+  durationMs: number | undefined;
+}
+
 export interface Session {
   id: string;
   tool: ToolKind;
@@ -37,13 +52,16 @@ export interface Session {
   endedAt: string | undefined;
   toolCalls: ToolCallEvent[];
   tokenSamples: TokenSample[];
+  compactions: CompactionEvent[];
   /** Number of turns (user message -> agent response cycles). */
   turnCount: number;
+  /** A forked/subagent conversation rather than a main thread — see each adapter for how this is detected. */
+  isFork: boolean;
 }
 
 export interface Finding {
   /** Stable id so a report/CLI flag can filter by category. */
-  category: "repeated-target" | "large-output" | "bloated-rules-file";
+  category: "repeated-target" | "large-output" | "bloated-rules-file" | "late-compaction";
   severity: "info" | "warn";
   title: string;
   detail: string;

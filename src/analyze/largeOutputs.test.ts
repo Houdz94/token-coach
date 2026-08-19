@@ -12,7 +12,9 @@ function session(toolCalls: ToolCallEvent[]): Session {
     endedAt: undefined,
     toolCalls,
     tokenSamples: [],
+    compactions: [],
     turnCount: toolCalls.length,
+    isFork: false,
   };
 }
 

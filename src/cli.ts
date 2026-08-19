@@ -2,7 +2,7 @@ import { loadClaudeCodeSessions } from "./adapters/claudeCode.js";
 import { loadCodexSessions } from "./adapters/codex.js";
 import { analyzeSessions } from "./analyze/index.js";
 import { printTerminalReport } from "./report/terminalReport.js";
-import { cleanOldSessions, defaultArchiveDir } from "./clean.js";
+import { cleanOldSessions, archiveSessionsByIds, defaultArchiveDir } from "./clean.js";
 import { toJsonReport } from "./report/jsonReport.js";
 import type { Session, ToolKind } from "./types.js";
 
@@ -16,6 +16,7 @@ interface AnalyzeArgs {
 interface CleanArgs {
   tool: ToolKind | "all";
   olderThanDays: number;
+  sessionIds: string[] | undefined;
   dryRun: boolean;
   json: boolean;
 }
@@ -40,6 +41,7 @@ function parseAnalyzeArgs(argv: string[]): AnalyzeArgs {
 function parseCleanArgs(argv: string[]): CleanArgs {
   let tool: ToolKind | "all" = "all";
   let olderThanDays = 30;
+  let sessionIds: string[] | undefined;
   let dryRun = false;
   let json = false;
 
@@ -47,11 +49,16 @@ function parseCleanArgs(argv: string[]): CleanArgs {
     const arg = argv[i];
     if (arg === "--tool") tool = parseTool(argv[++i]);
     else if (arg === "--older-than-days") olderThanDays = Number(argv[++i]) || olderThanDays;
-    else if (arg === "--dry-run") dryRun = true;
+    else if (arg === "--session-ids") {
+      sessionIds = (argv[++i] ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--json") json = true;
   }
 
-  return { tool, olderThanDays, dryRun, json };
+  return { tool, olderThanDays, sessionIds, dryRun, json };
 }
 
 function parseTool(value: string | undefined): ToolKind | "all" {
@@ -84,13 +91,16 @@ function printHelp(): void {
 Usage:
   token-coach analyze [--tool claude|codex|all] [--limit N] [--since-days N] [--json]
   token-coach clean [--tool claude|codex|all] [--older-than-days 30] [--dry-run] [--json]
+  token-coach clean --session-ids id1,id2,... [--dry-run] [--json]
   token-coach --help
 
 Reads session logs from:
   ~/.claude/projects/**/*.jsonl
   ~/.codex/sessions/**/rollout-*.jsonl
 
-"clean" MOVES old session logs to ${defaultArchiveDir()} — nothing is deleted.
+"clean" MOVES session logs to ${defaultArchiveDir()} — nothing is deleted.
+Without --session-ids it sweeps by age; with it, it archives exactly the
+sessions named (e.g. the sessionId of a specific finding from --json).
 
 Nothing leaves your machine. No network calls.
 `);
@@ -110,7 +120,9 @@ function runAnalyze(argv: string[]): void {
 
 function runClean(argv: string[]): void {
   const args = parseCleanArgs(argv);
-  const result = cleanOldSessions({ tool: args.tool, olderThanDays: args.olderThanDays, dryRun: args.dryRun });
+  const result = args.sessionIds
+    ? archiveSessionsByIds({ sessionIds: args.sessionIds, dryRun: args.dryRun })
+    : cleanOldSessions({ tool: args.tool, olderThanDays: args.olderThanDays, dryRun: args.dryRun });
 
   if (args.json) {
     console.log(JSON.stringify(result));
@@ -118,7 +130,7 @@ function runClean(argv: string[]): void {
   }
 
   if (result.files.length === 0) {
-    console.log(`Nothing older than ${args.olderThanDays} days found. Nothing to do.`);
+    console.log(args.sessionIds ? "None of those session ids were found. Nothing to do." : `Nothing older than ${args.olderThanDays} days found. Nothing to do.`);
     return;
   }
   const verb = args.dryRun ? "Would archive" : "Archived";

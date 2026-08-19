@@ -100,4 +100,45 @@ describe("parseCodexSession", () => {
     const session = parseCodexSession(file);
     expect(session.tokenSamples).toEqual([{ timestamp: "2026-01-01T00:00:06Z", cumulativeTotal: 1234 }]);
   });
+
+  it("marks a session as a fork when session_meta.source carries a subagent key", () => {
+    dir = mkdtempSync(join(tmpdir(), "token-coach-test-"));
+    const file = join(dir, "rollout-test.jsonl");
+    const forkLines = LINES.map((l) => {
+      const parsed = JSON.parse(l);
+      if (parsed.type === "session_meta") parsed.payload.source = { subagent: { other: "guardian" } };
+      return JSON.stringify(parsed);
+    });
+    writeFileSync(file, forkLines.join("\n"));
+
+    expect(parseCodexSession(file).isFork).toBe(true);
+  });
+
+  it("defaults isFork to false for a normal vscode-sourced session", () => {
+    dir = mkdtempSync(join(tmpdir(), "token-coach-test-"));
+    const file = join(dir, "rollout-test.jsonl");
+    writeFileSync(file, LINES.join("\n"));
+
+    expect(parseCodexSession(file).isFork).toBe(false);
+  });
+
+  it("derives compaction preTokens/postTokens from the surrounding token_count samples, with an honest 'unknown' trigger", () => {
+    dir = mkdtempSync(join(tmpdir(), "token-coach-test-"));
+    const file = join(dir, "rollout-test.jsonl");
+    const withCompaction = [
+      ...LINES,
+      JSON.stringify({ type: "event_msg", timestamp: "2026-01-01T00:00:06.5Z", payload: { type: "context_compacted" } }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: "2026-01-01T00:00:07Z",
+        payload: { type: "token_count", info: { total_token_usage: { total_tokens: 50 } } },
+      }),
+    ];
+    writeFileSync(file, withCompaction.join("\n"));
+
+    const session = parseCodexSession(file);
+    expect(session.compactions).toEqual([
+      { timestamp: "2026-01-01T00:00:06.5Z", trigger: "unknown", preTokens: 1234, postTokens: 50, durationMs: undefined },
+    ]);
+  });
 });

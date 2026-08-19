@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import type { Session, ToolCallEvent, TokenSample } from "../types.js";
+import type { Session, ToolCallEvent, TokenSample, CompactionEvent } from "../types.js";
+import { findWslRoots } from "./wslRoots.js";
 
 export function defaultClaudeCodeRoot(): string {
   return join(homedir(), ".claude", "projects");
@@ -99,9 +100,11 @@ export function parseClaudeCodeSession(filePath: string): Session {
   let endedAt: string | undefined;
   let turnCount = 0;
   let cumulative = 0;
+  let isFork = false;
 
   const toolCalls: ToolCallEvent[] = [];
   const tokenSamples: TokenSample[] = [];
+  const compactions: CompactionEvent[] = [];
   const pending = new Map<string, { turnId: string; name: string; target: string | undefined; timestamp: string }>();
 
   for (const line of lines) {
@@ -119,6 +122,20 @@ export function parseClaudeCodeSession(filePath: string): Session {
     }
     if (typeof record.cwd === "string") cwd ??= record.cwd;
     if (typeof record.sessionId === "string") sessionId ??= record.sessionId;
+    if (record.isSidechain === true) isFork = true;
+
+    if (record.type === "system" && record.subtype === "compact_boundary") {
+      const meta = record.compactMetadata as
+        | { trigger?: string; preTokens?: number; postTokens?: number; durationMs?: number }
+        | undefined;
+      compactions.push({
+        timestamp: timestamp ?? "",
+        trigger: meta?.trigger === "auto" ? "auto" : meta?.trigger === "manual" ? "manual" : "unknown",
+        preTokens: meta?.preTokens,
+        postTokens: meta?.postTokens,
+        durationMs: meta?.durationMs,
+      });
+    }
 
     if (record.type === "assistant") {
       turnCount += 1;
@@ -176,12 +193,24 @@ export function parseClaudeCodeSession(filePath: string): Session {
     endedAt,
     toolCalls,
     tokenSamples,
+    compactions,
     turnCount,
+    isFork,
   };
 }
 
-export function loadClaudeCodeSessions(root: string = defaultClaudeCodeRoot()): Session[] {
-  return findClaudeCodeSessionFiles(root)
+export function loadClaudeCodeSessions(
+  root: string = defaultClaudeCodeRoot(),
+  additionalRoots: string[] = findWslRoots([".claude", "projects"]),
+): Session[] {
+  // Not deduped by session id: a fork/subagent file frequently shares its
+  // parent's sessionId while being a genuinely separate file with its own
+  // content (see isFork above) — deduping on id here would silently drop
+  // real fork sessions, not just double-mounted WSL paths. Path-level
+  // duplication across WSL UNC prefixes is instead avoided upstream, in
+  // findWslRoots, which only ever returns one prefix per distro.
+  return [root, ...additionalRoots]
+    .flatMap((r) => findClaudeCodeSessionFiles(r))
     .map((f) => {
       try {
         return parseClaudeCodeSession(f);
