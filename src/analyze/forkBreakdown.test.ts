@@ -14,6 +14,8 @@ function session(overrides: Partial<Session> & { tool: ToolKind }): Session {
     compactions: [],
     turnCount: 0,
     isFork: false,
+    title: undefined,
+    lastMessage: undefined,
     ...overrides,
   };
 }

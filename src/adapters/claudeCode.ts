@@ -4,6 +4,12 @@ import { homedir } from "node:os";
 import type { Session, ToolCallEvent, TokenSample, CompactionEvent } from "../types.js";
 import { findWslRoots } from "./wslRoots.js";
 
+const TITLE_MAX_CHARS = 200;
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
+}
+
 export function defaultClaudeCodeRoot(): string {
   return join(homedir(), ".claude", "projects");
 }
@@ -101,6 +107,8 @@ export function parseClaudeCodeSession(filePath: string): Session {
   let turnCount = 0;
   let cumulative = 0;
   let isFork = false;
+  let title: string | undefined;
+  let lastMessage: string | undefined;
 
   const toolCalls: ToolCallEvent[] = [];
   const tokenSamples: TokenSample[] = [];
@@ -123,6 +131,17 @@ export function parseClaudeCodeSession(filePath: string): Session {
     if (typeof record.cwd === "string") cwd ??= record.cwd;
     if (typeof record.sessionId === "string") sessionId ??= record.sessionId;
     if (record.isSidechain === true) isFork = true;
+
+    // Both overwrite (not ??=) as they're encountered — Claude Code emits
+    // a fresh ai-title/last-prompt record as the conversation evolves, and
+    // the latest one in the file is the one that actually identifies what
+    // this session is *now*, not what it started as.
+    if (record.type === "ai-title" && typeof record.aiTitle === "string") {
+      title = truncate(record.aiTitle, TITLE_MAX_CHARS);
+    }
+    if (record.type === "last-prompt" && typeof record.lastPrompt === "string") {
+      lastMessage = truncate(record.lastPrompt, TITLE_MAX_CHARS);
+    }
 
     if (record.type === "system" && record.subtype === "compact_boundary") {
       const meta = record.compactMetadata as
@@ -196,6 +215,8 @@ export function parseClaudeCodeSession(filePath: string): Session {
     compactions,
     turnCount,
     isFork,
+    title,
+    lastMessage,
   };
 }
 

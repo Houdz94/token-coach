@@ -141,4 +141,32 @@ describe("parseCodexSession", () => {
       { timestamp: "2026-01-01T00:00:06.5Z", trigger: "unknown", preTokens: 1234, postTokens: 50, durationMs: undefined },
     ]);
   });
+
+  it("derives a title and last message from real user messages, ignoring developer/system role messages", () => {
+    dir = mkdtempSync(join(tmpdir(), "token-coach-test-"));
+    const file = join(dir, "rollout-test.jsonl");
+    const withMessages = [
+      ...LINES,
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-01-01T00:00:08Z",
+        payload: { type: "message", role: "developer", content: [{ type: "input_text", text: "You are Codex, a coding agent..." }] },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-01-01T00:00:09Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "fix the flaky test in auth.spec.ts" }] },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-01-01T00:00:10Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "also add a retry" }] },
+      }),
+    ];
+    writeFileSync(file, withMessages.join("\n"));
+
+    const session = parseCodexSession(file);
+    expect(session.title).toBe("fix the flaky test in auth.spec.ts");
+    expect(session.lastMessage).toBe("also add a retry");
+  });
 });

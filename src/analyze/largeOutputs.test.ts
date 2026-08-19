@@ -15,6 +15,8 @@ function session(toolCalls: ToolCallEvent[]): Session {
     compactions: [],
     turnCount: toolCalls.length,
     isFork: false,
+    title: undefined,
+    lastMessage: undefined,
   };
 }
 

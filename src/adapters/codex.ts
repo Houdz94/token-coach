@@ -61,6 +61,24 @@ function extractTargetFromArguments(argsRaw: string): string | undefined {
   return undefined;
 }
 
+const TITLE_MAX_CHARS = 200;
+
+function extractText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (block && typeof block === "object" && typeof (block as Record<string, unknown>).text === "string") {
+      parts.push((block as Record<string, unknown>).text as string);
+    }
+  }
+  return parts.join(" ").trim();
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
+}
+
 function outputChars(output: unknown): number {
   if (typeof output === "string") return output.length;
   if (Array.isArray(output)) {
@@ -102,6 +120,11 @@ export function parseCodexSession(filePath: string): Session {
   let endedAt: string | undefined;
   let turnCount = 0;
   let isFork = false;
+  // Codex has no dedicated title field (unlike Claude Code's ai-title
+  // record) — derived from actual user messages instead: the first one as
+  // a title, the most recent one as "what's this session doing right now".
+  let title: string | undefined;
+  let lastMessage: string | undefined;
 
   const toolCalls: ToolCallEvent[] = [];
   const tokenSamples: TokenSample[] = [];
@@ -168,6 +191,15 @@ export function parseCodexSession(filePath: string): Session {
     const itemType = payload.type;
     if (typeof itemType !== "string") continue;
 
+    if (itemType === "message" && payload.role === "user") {
+      const text = extractText(payload.content);
+      if (text) {
+        title ??= truncate(text, TITLE_MAX_CHARS);
+        lastMessage = truncate(text, TITLE_MAX_CHARS);
+      }
+      continue;
+    }
+
     if (CALL_TYPES.has(itemType)) {
       const callId = typeof payload.call_id === "string" ? payload.call_id : undefined;
       if (!callId) continue;
@@ -230,6 +262,8 @@ export function parseCodexSession(filePath: string): Session {
     compactions,
     turnCount,
     isFork,
+    title,
+    lastMessage,
   };
 }
 

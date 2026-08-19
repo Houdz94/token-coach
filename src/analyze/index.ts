@@ -3,6 +3,7 @@ import { findRepeatedTargets } from "./repeatedTargets.js";
 import { findLargeOutputs } from "./largeOutputs.js";
 import { findBloatedRulesFile } from "./rulesFile.js";
 import { findLateCompactions } from "./lateCompaction.js";
+import { findStaleContext } from "./staleContext.js";
 
 export function analyzeSessions(sessions: Session[]): Finding[] {
   const findings: Finding[] = [];
@@ -12,8 +13,14 @@ export function analyzeSessions(sessions: Session[]): Finding[] {
     const repeated = findRepeatedTargets(session);
     findings.push(...repeated);
 
+    const stale = findStaleContext(session);
+    findings.push(...stale);
+
+    // large-output is the catch-all "one call, big result" signal — skip
+    // any target already reported more specifically as a repeat or as
+    // stale dead weight, so the same bytes never get flagged three ways.
     const flaggedTargets = new Set(
-      repeated.map((f) => f.detail.match(/^"([^"]+)"/)?.[1]).filter((t): t is string => !!t),
+      [...repeated, ...stale].map((f) => f.detail.match(/^"([^"]+)"/)?.[1]).filter((t): t is string => !!t),
     );
     findings.push(...findLargeOutputs(session, flaggedTargets));
     findings.push(...findLateCompactions(session));

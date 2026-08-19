@@ -57,11 +57,21 @@ export interface Session {
   turnCount: number;
   /** A forked/subagent conversation rather than a main thread — see each adapter for how this is detected. */
   isFork: boolean;
+  /**
+   * A human-recognizable name for this specific conversation — needed the
+   * moment there's more than one active session at once, which "session
+   * <uuid>" doesn't help anyone tell apart. Claude Code's own AI-generated
+   * title (its ai-title record); Codex has no equivalent field, so its
+   * adapter derives one from the first user message instead.
+   */
+  title: string | undefined;
+  /** The most recent user message in this session, truncated — a second, complementary way to recognize "which conversation is this" (Claude Code's last-prompt record; Codex's most recent user message). */
+  lastMessage: string | undefined;
 }
 
 export interface Finding {
   /** Stable id so a report/CLI flag can filter by category. */
-  category: "repeated-target" | "large-output" | "bloated-rules-file" | "late-compaction";
+  category: "repeated-target" | "large-output" | "bloated-rules-file" | "late-compaction" | "stale-context";
   severity: "info" | "warn";
   title: string;
   detail: string;

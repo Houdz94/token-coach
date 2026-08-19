@@ -105,4 +105,30 @@ describe("parseClaudeCodeSession", () => {
 
     expect(parseClaudeCodeSession(file).isFork).toBe(false);
   });
+
+  it("captures the AI-generated title and the most recent user prompt, for telling concurrent sessions apart", () => {
+    dir = mkdtempSync(join(tmpdir(), "token-coach-test-"));
+    const file = join(dir, "sess-1.jsonl");
+    const extra = [
+      JSON.stringify({ type: "ai-title", aiTitle: "Fix the login redirect bug", sessionId: "sess-1" }),
+      JSON.stringify({ type: "last-prompt", lastPrompt: "now also handle the logout case", sessionId: "sess-1" }),
+    ];
+    writeFileSync(file, [...LINES, ...extra].join("\n"));
+
+    const session = parseClaudeCodeSession(file);
+    expect(session.title).toBe("Fix the login redirect bug");
+    expect(session.lastMessage).toBe("now also handle the logout case");
+  });
+
+  it("keeps the LATEST ai-title/last-prompt when several appear, not the first", () => {
+    dir = mkdtempSync(join(tmpdir(), "token-coach-test-"));
+    const file = join(dir, "sess-1.jsonl");
+    const extra = [
+      JSON.stringify({ type: "ai-title", aiTitle: "First guess at a title", sessionId: "sess-1" }),
+      JSON.stringify({ type: "ai-title", aiTitle: "Better title once the topic was clear", sessionId: "sess-1" }),
+    ];
+    writeFileSync(file, [...LINES, ...extra].join("\n"));
+
+    expect(parseClaudeCodeSession(file).title).toBe("Better title once the topic was clear");
+  });
 });

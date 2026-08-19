@@ -4,6 +4,7 @@ import { analyzeSessions } from "./analyze/index.js";
 import { printTerminalReport } from "./report/terminalReport.js";
 import { cleanOldSessions, archiveSessionsByIds, defaultArchiveDir } from "./clean.js";
 import { toJsonReport } from "./report/jsonReport.js";
+import { findActiveSessions } from "./live.js";
 import type { Session, ToolKind } from "./types.js";
 
 interface AnalyzeArgs {
@@ -92,6 +93,7 @@ Usage:
   token-coach analyze [--tool claude|codex|all] [--limit N] [--since-days N] [--json]
   token-coach clean [--tool claude|codex|all] [--older-than-days 30] [--dry-run] [--json]
   token-coach clean --session-ids id1,id2,... [--dry-run] [--json]
+  token-coach live [--minutes 20] [--json]
   token-coach --help
 
 Reads session logs from:
@@ -139,6 +141,37 @@ function runClean(argv: string[]): void {
   if (args.dryRun) console.log("(dry run — nothing was moved. Re-run without --dry-run to apply.)");
 }
 
+function runLive(argv: string[]): void {
+  let minutes = 20;
+  let json = false;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--minutes") minutes = Number(argv[++i]) || minutes;
+    else if (argv[i] === "--json") json = true;
+  }
+
+  const active = findActiveSessions(minutes);
+
+  if (json) {
+    console.log(JSON.stringify({ generatedAt: new Date().toISOString(), windowMinutes: minutes, activeSessions: active }));
+    return;
+  }
+
+  if (active.length === 0) {
+    console.log(`No session active in the last ${minutes} minutes.`);
+    return;
+  }
+
+  for (const s of active) {
+    console.log(`\n[${s.tool}] ${s.title ?? "(untitled)"} — ${s.cwd ?? "?"}`);
+    if (s.lastMessage) console.log(`  last: "${s.lastMessage}"`);
+    if (s.currentContextTokens !== undefined) console.log(`  context: ~${s.currentContextTokens.toLocaleString("en-US")} tokens`);
+    for (const f of s.findings) {
+      console.log(`  ${f.severity === "warn" ? "⚠" : "·"} ${f.title}`);
+      console.log(`    ${f.detail}`);
+    }
+  }
+}
+
 function main(): void {
   const argv = process.argv.slice(2);
   if (argv.includes("--help") || argv.includes("-h") || argv.length === 0) {
@@ -149,6 +182,7 @@ function main(): void {
   const [command, ...rest] = argv;
   if (command === "analyze") return runAnalyze(rest);
   if (command === "clean") return runClean(rest);
+  if (command === "live") return runLive(rest);
 
   printHelp();
   process.exit(1);

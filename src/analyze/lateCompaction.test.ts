@@ -15,6 +15,8 @@ function session(compactions: CompactionEvent[]): Session {
     compactions,
     turnCount: 0,
     isFork: false,
+    title: undefined,
+    lastMessage: undefined,
   };
 }
 
