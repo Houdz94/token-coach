@@ -14,6 +14,9 @@ export interface ArchivedFile {
   from: string;
   to: string;
   bytes: number;
+  /** The session's own title/cwd, when known — a raw UUID filename ("a929ae39-....jsonl") means nothing to a human; this is what a confirmation dialog should actually show. */
+  title: string | undefined;
+  cwd: string | undefined;
 }
 
 export interface CleanResult {
@@ -22,7 +25,14 @@ export interface CleanResult {
   archiveDir: string;
 }
 
-function moveFile(tool: ToolKind, root: string, path: string, archiveDir: string, dryRun: boolean | undefined): ArchivedFile | undefined {
+function moveFile(
+  tool: ToolKind,
+  root: string,
+  path: string,
+  archiveDir: string,
+  dryRun: boolean | undefined,
+  identity: { title?: string; cwd?: string } = {},
+): ArchivedFile | undefined {
   let stat;
   try {
     stat = statSync(path);
@@ -38,7 +48,7 @@ function moveFile(tool: ToolKind, root: string, path: string, archiveDir: string
     renameSync(path, dest);
   }
 
-  return { tool, from: path, to: dest, bytes: stat.size };
+  return { tool, from: path, to: dest, bytes: stat.size, title: identity.title, cwd: identity.cwd };
 }
 
 /**
@@ -108,14 +118,20 @@ export function archiveSessionsByIds(options: {
   const claudeRoot = options.claudeRoot ?? defaultClaudeCodeRoot();
   for (const session of loadClaudeCodeSessions(claudeRoot)) {
     if (!wanted.has(session.id)) continue;
-    const moved = moveFile("claude-code", claudeRoot, session.sourcePath, archiveDir, options.dryRun);
+    const moved = moveFile("claude-code", claudeRoot, session.sourcePath, archiveDir, options.dryRun, {
+      title: session.title,
+      cwd: session.cwd,
+    });
     if (moved) files.push(moved);
   }
 
   const codexRoot = options.codexRoot ?? defaultCodexRoot();
   for (const session of loadCodexSessions(codexRoot)) {
     if (!wanted.has(session.id)) continue;
-    const moved = moveFile("codex", codexRoot, session.sourcePath, archiveDir, options.dryRun);
+    const moved = moveFile("codex", codexRoot, session.sourcePath, archiveDir, options.dryRun, {
+      title: session.title,
+      cwd: session.cwd,
+    });
     if (moved) files.push(moved);
   }
 

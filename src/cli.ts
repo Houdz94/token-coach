@@ -144,6 +144,9 @@ function runClean(argv: string[]): void {
   const verb = args.dryRun ? "Would archive" : "Archived";
   const mb = (result.totalBytes / (1024 * 1024)).toFixed(1);
   console.log(`${verb} ${result.files.length} session file(s), ${mb} MB, to ${result.archiveDir}`);
+  for (const f of result.files) {
+    console.log(`  • [${f.tool}] ${f.title ?? f.from.split("/").pop()}${f.cwd ? ` — ${f.cwd}` : ""}`);
+  }
   if (args.dryRun) console.log("(dry run — nothing was moved. Re-run without --dry-run to apply.)");
 }
 

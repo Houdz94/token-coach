@@ -106,6 +106,23 @@ describe("archiveSessionsByIds", () => {
     expect(result.files[0]!.from).toBe(flaggedFile);
   });
 
+  it("carries the session's real title/cwd — a raw UUID filename means nothing to a human in a confirmation dialog", () => {
+    root = mkdtempSync(join(tmpdir(), "token-coach-clean-"));
+    archiveDir = mkdtempSync(join(tmpdir(), "token-coach-archive-"));
+
+    const file = join(root, "flagged.jsonl");
+    const lines = [
+      claudeSessionLine("flagged-session"),
+      JSON.stringify({ type: "ai-title", aiTitle: "Fix the login redirect bug", sessionId: "flagged-session" }),
+    ];
+    writeFileSync(file, lines.join("\n"));
+
+    const result = archiveSessionsByIds({ sessionIds: ["flagged-session"], archiveDir, claudeRoot: root, codexRoot: join(root, "no-codex") });
+
+    expect(result.files[0]!.title).toBe("Fix the login redirect bug");
+    expect(result.files[0]!.cwd).toBeUndefined();
+  });
+
   it("dry-run reports without moving anything", () => {
     root = mkdtempSync(join(tmpdir(), "token-coach-clean-"));
     archiveDir = mkdtempSync(join(tmpdir(), "token-coach-archive-"));
