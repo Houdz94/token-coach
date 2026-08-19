@@ -1,5 +1,6 @@
 import type { Session, Finding } from "../types.js";
 import { charsToTokens } from "./estimate.js";
+import { isInternalPath } from "./internalPaths.js";
 
 const MIN_CONSECUTIVE_READS = 3;
 
@@ -62,7 +63,7 @@ export function findRepeatedTargets(session: Session): Finding[] {
     // not a real, stable identifier worth tracking repeats on — e.g. a
     // live console-log poller called with pattern:"." repeatedly isn't
     // "re-reading the same file", it's watching something that changes.
-    if (!call.target || call.target.length < 3) continue;
+    if (!call.target || call.target.length < 3 || isInternalPath(call.target)) continue;
     const isWrite = WRITE_LIKE_NAME.test(call.name);
 
     if (isWrite) {

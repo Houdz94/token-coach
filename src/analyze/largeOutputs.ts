@@ -1,5 +1,6 @@
 import type { Session, Finding } from "../types.js";
 import { charsToTokens } from "./estimate.js";
+import { isInternalPath } from "./internalPaths.js";
 
 // ~2,500 tokens. Arbitrary but conservative — big enough that a single call
 // crossing it is worth a human glancing at, small enough to catch a
@@ -19,6 +20,7 @@ export function findLargeOutputs(session: Session, alreadyFlaggedTargets: Set<st
   for (const call of session.toolCalls) {
     if (call.outputChars < LARGE_OUTPUT_CHARS) continue;
     if (call.target && alreadyFlaggedTargets.has(call.target)) continue;
+    if (call.target && isInternalPath(call.target)) continue;
 
     findings.push({
       category: "large-output",

@@ -1,5 +1,6 @@
 import type { Session, Finding } from "../types.js";
 import { charsToTokens } from "./estimate.js";
+import { isInternalPath } from "./internalPaths.js";
 
 // Same bar as largeOutputs.ts's "worth a look" threshold — a block has to
 // be sizeable before "it's still sitting there unused" is worth surfacing.
@@ -39,6 +40,11 @@ export function findStaleContext(session: Session): Finding[] {
   session.toolCalls.forEach((call, callPos) => {
     if (!call.target || call.outputChars < STALE_MIN_CHARS) return;
     if (WRITE_LIKE_NAME.test(call.name)) return;
+    // Claude Code's own internal skill/scratchpad reads — not the user's
+    // file, never consciously read, nothing for them to act on. Real
+    // report from using this tool: a dataviz skill's reference file got
+    // flagged as "stale context" on a live session, which was pure noise.
+    if (isInternalPath(call.target)) return;
 
     const introducedAt = turnIndex.get(call.turnId) ?? 0;
     const turnsSince = lastTurnIndex - introducedAt;
